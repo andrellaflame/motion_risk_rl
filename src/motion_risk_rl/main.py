@@ -171,7 +171,7 @@ def continue_training_humanoid(model_to_load_path, stats_to_load_path, additiona
 
 if __name__ == "__main__":
     SHOULD_CONTINUE_TRAINING = False 
-    ADDITIONAL_TRAINING_STEPS = 5_000_000
+    ADDITIONAL_TRAINING_STEPS = 3_000_000
 
     best_model_file = os.path.join(BEST_MODEL_SAVE_PATH, "best_model.zip")
     stats_file_for_best_model = os.path.join(BEST_MODEL_SAVE_PATH, "vecnormalize.pkl")

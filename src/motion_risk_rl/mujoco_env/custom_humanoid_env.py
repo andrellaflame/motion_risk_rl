@@ -97,6 +97,144 @@ class CustomHumanoidEnv(gym.Env):
 
         return observation, info
 
+    # def step(self, action):
+    #     # Apply action
+    #     self.data.ctrl[:] = action.copy()
+
+    #     # Simulate for frame_skip steps
+    #     for _ in range(self.frame_skip):
+    #         mujoco.mj_step(self.model, self.data)
+
+    #     # --- Refined Reward Calculation ---
+        
+    #     # 1. Forward Velocity Reward (Encourage moving forward)
+    #     forward_velocity = self.data.qvel[0] # Root's x-velocity
+    #     forward_reward_weight = 1.25
+    #     forward_reward = forward_reward_weight * forward_velocity
+
+    #     # 2. Healthy/Alive Bonus (Constant bonus for not being terminated)
+    #     # This is given at each step *if* the agent is not terminated in this step.
+    #     healthy_reward_bonus = 2.0 # Tune this; make it substantial enough to want to stay alive
+
+    #     # 3. Control Cost (Penalize large motor efforts for efficiency)
+    #     ctrl_cost_weight = 0.01 # Tune this (0.001 to 0.1 is common)
+    #     ctrl_cost = -ctrl_cost_weight * np.sum(np.square(action))
+
+    #     # 4. Uprightness Reward (CRUCIAL for stable walking)
+    #     torso_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "torso")
+    #     # xmat is (nbody x 9) array of rotation matrices, reshape to (nbody x 3 x 3)
+    #     # The third column (index 2) of a body's rotation matrix is its z-axis in world frame.
+    #     torso_z_axis_world = self.data.xmat[torso_id].reshape(3, 3)[:, 2]
+        
+    #     # Dot product of torso's z-axis with world_up_vector [0, 0, 1]
+    #     # This value is 1 if perfectly upright, 0 if horizontal, -1 if upside down.
+    #     upright_value = torso_z_axis_world[2] 
+        
+    #     upright_reward_weight = 0.5 # Tune this
+    #     # Reward more strongly as it gets closer to 1. Penalize if leaning too much.
+    #     # Example: Quadratic reward for uprightness, or simply scale upright_value
+    #     # upright_reward = upright_reward_weight * upright_value # Simple linear
+    #     upright_reward = upright_reward_weight * (1.0 + upright_value) / 2.0 # Scales from 0 (upside down) to upright_reward_weight (upright)
+
+    #     # --- Check Termination Conditions ---
+    #     terminated = False
+    #     current_root_height = self.data.qpos[2] # Z-position of the root/torso base
+        
+    #     # Define healthy height range (relative to model's initial height ~1.282)
+    #     min_healthy_height = 0.75 # If root goes below this, it's fallen (adjust based on model proportions)
+    #     max_healthy_height = 1.5  # To prevent excessive jumping if not desired
+
+    #     # Healthy if within height range AND reasonably upright
+    #     is_healthy = (current_root_height >= min_healthy_height and \
+    #                   current_root_height <= max_healthy_height and \
+    #                   upright_value > 0.5) # Must be leaning forward/upright, not too far back/down
+
+    #     if not is_healthy:
+    #         terminated = True
+    #         # When terminated, the reward for this step is primarily a large penalty.
+    #         # Other components like forward_reward, ctrl_cost for this step are less relevant
+    #         # or could be included if you want to penalize thrashing while falling.
+    #         reward_on_termination = -100.0 # Significant penalty for falling
+    #         current_step_reward = reward_on_termination
+    #     else:
+    #         # If healthy, sum up all the positive and negative incentives
+    #         current_step_reward = forward_reward + healthy_reward_bonus + ctrl_cost + upright_reward
+    #         # Note: healthy_reward_bonus is only given if not terminated.
+
+    #     # Truncation (e.g., if episode runs for too long without falling)
+    #     # Not explicitly implemented here, but TimeLimit wrappers in SB3 handle this.
+    #     # If you add it, it would set truncated = True
+    #     truncated = False 
+
+    #     observation = self._get_obs()
+        
+    #     info = {
+    #         "forward_reward": forward_reward,
+    #         "healthy_reward_bonus": healthy_reward_bonus if not terminated else 0,
+    #         "ctrl_cost": ctrl_cost,
+    #         "upright_reward": upright_reward,
+    #         "current_height": current_root_height,
+    #         "upright_value": upright_value,
+    #         "is_healthy": is_healthy,
+    #     }
+    #     if terminated:
+    #         info["termination_reason"] = "unhealthy (fell or tilted too much)"
+
+    #     if self.render_mode == "human":
+    #         self._render_frame()
+
+    #     return observation, current_step_reward, terminated, truncated, info
+    #     # Apply action
+    #     self.data.ctrl[:] = action.copy()
+
+    #     # Simulate for frame_skip steps
+    #     for _ in range(self.frame_skip):
+    #         mujoco.mj_step(self.model, self.data)
+
+    #     # --- Calculate Reward ---
+    #     # This is the MOST CRITICAL part for learning to walk.
+    #     # You need to design this carefully.
+    #     # Components often include:
+    #     # 1. Forward velocity: Reward moving forward (e.g., x-velocity of torso/root)
+    #     # 2. Healthy reward: Constant bonus for not falling / staying alive.
+    #     # 3. Control cost: Penalty for excessive motor torques (e.g., -sum(square(actions)))
+    #     # 4. Contact cost (optional): Penalty for hard contacts or undesired contacts.
+    #     # 5. Uprightness: Penalty for torso leaning too much.
+
+    #     # Get root/torso x-velocity (qvel[0])
+    #     forward_velocity = self.data.qvel[0]
+        
+    #     # Healthy reward (e.g., +1 as long as not terminated)
+    #     healthy_reward = 1.0 # Simplified, Humanoid-v4 has a more complex one
+
+    #     # Control cost (penalize large actions)
+    #     ctrl_cost_weight = 0.01 # Tune this
+    #     ctrl_cost = -ctrl_cost_weight * np.sum(np.square(action))
+
+    #     reward = forward_velocity + healthy_reward + ctrl_cost
+
+    #     # --- Check Termination & Truncation ---
+    #     terminated = False
+    #     # Terminate if z-position of torso is too low (fallen)
+    #     if self.data.qpos[2] < 0.65: # Adjust this threshold
+    #         terminated = True
+    #         healthy_reward = 0 # No healthy reward if fallen
+    #         reward = -50 # Large penalty for falling (example)
+
+    #     truncated = False # Placeholder
+
+    #     observation = self._get_obs()
+    #     info = {
+    #         "forward_velocity": forward_velocity,
+    #         "ctrl_cost": ctrl_cost,
+    #         "healthy_reward": healthy_reward,
+    #     }
+
+    #     if self.render_mode == "human":
+    #         self._render_frame()
+
+    #     return observation, reward, terminated, truncated, info
+
     def step(self, action):
         # Apply action
         self.data.ctrl[:] = action.copy()
@@ -106,7 +244,6 @@ class CustomHumanoidEnv(gym.Env):
             mujoco.mj_step(self.model, self.data)
 
         # --- Refined Reward Calculation ---
-        
         # 1. Forward Velocity Reward (Encourage moving forward)
         forward_velocity = self.data.qvel[0] # Root's x-velocity
         forward_reward_weight = 1.25
@@ -125,11 +262,9 @@ class CustomHumanoidEnv(gym.Env):
         # xmat is (nbody x 9) array of rotation matrices, reshape to (nbody x 3 x 3)
         # The third column (index 2) of a body's rotation matrix is its z-axis in world frame.
         torso_z_axis_world = self.data.xmat[torso_id].reshape(3, 3)[:, 2]
-        
         # Dot product of torso's z-axis with world_up_vector [0, 0, 1]
         # This value is 1 if perfectly upright, 0 if horizontal, -1 if upside down.
-        upright_value = torso_z_axis_world[2] 
-        
+        upright_value = torso_z_axis_world[2]
         upright_reward_weight = 0.5 # Tune this
         # Reward more strongly as it gets closer to 1. Penalize if leaning too much.
         # Example: Quadratic reward for uprightness, or simply scale upright_value
@@ -139,15 +274,14 @@ class CustomHumanoidEnv(gym.Env):
         # --- Check Termination Conditions ---
         terminated = False
         current_root_height = self.data.qpos[2] # Z-position of the root/torso base
-        
         # Define healthy height range (relative to model's initial height ~1.282)
         min_healthy_height = 0.75 # If root goes below this, it's fallen (adjust based on model proportions)
-        max_healthy_height = 1.5  # To prevent excessive jumping if not desired
+        max_healthy_height = 1.5 # To prevent excessive jumping if not desired
 
         # Healthy if within height range AND reasonably upright
         is_healthy = (current_root_height >= min_healthy_height and \
-                      current_root_height <= max_healthy_height and \
-                      upright_value > 0.5) # Must be leaning forward/upright, not too far back/down
+        current_root_height <= max_healthy_height and \
+        upright_value > 0.5) # Must be leaning forward/upright, not too far back/down
 
         if not is_healthy:
             terminated = True
@@ -159,15 +293,10 @@ class CustomHumanoidEnv(gym.Env):
         else:
             # If healthy, sum up all the positive and negative incentives
             current_step_reward = forward_reward + healthy_reward_bonus + ctrl_cost + upright_reward
-            # Note: healthy_reward_bonus is only given if not terminated.
-
-        # Truncation (e.g., if episode runs for too long without falling)
-        # Not explicitly implemented here, but TimeLimit wrappers in SB3 handle this.
-        # If you add it, it would set truncated = True
-        truncated = False 
+       
+        truncated = False
 
         observation = self._get_obs()
-        
         info = {
             "forward_reward": forward_reward,
             "healthy_reward_bonus": healthy_reward_bonus if not terminated else 0,
@@ -203,7 +332,6 @@ class CustomHumanoidEnv(gym.Env):
 
         # Get root/torso x-velocity (qvel[0])
         forward_velocity = self.data.qvel[0]
-        
         # Healthy reward (e.g., +1 as long as not terminated)
         healthy_reward = 1.0 # Simplified, Humanoid-v4 has a more complex one
 
