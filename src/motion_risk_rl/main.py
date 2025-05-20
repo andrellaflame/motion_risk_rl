@@ -16,6 +16,7 @@ from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 
 import mujoco
 import mujoco.viewer
+import argparse
 
 # --- Configuration ---
 XML_FILE_PATH = "models/humanoid.xml"
@@ -107,6 +108,8 @@ def watch_trained_humanoid(model_path, stats_path):
         action, _states = model.predict(obs, deterministic=True)
         obs, rewards, dones, info = loaded_vec_env.step(action)
 
+        loaded_vec_env.render()
+
         time.sleep(0.02)
 
         if dones.any():
@@ -169,39 +172,25 @@ def continue_training_humanoid(model_to_load_path, stats_to_load_path, additiona
     env.close()
     eval_env_cont.close()
 
+
 if __name__ == "__main__":
-    SHOULD_CONTINUE_TRAINING = False 
-    ADDITIONAL_TRAINING_STEPS = 3_000_000
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["train", "continue", "watch"], default="watch")
+    parser.add_argument("--steps", type=int, default=3_000_000)
+    args = parser.parse_args()
 
     best_model_file = os.path.join(BEST_MODEL_SAVE_PATH, "best_model.zip")
-    stats_file_for_best_model = os.path.join(BEST_MODEL_SAVE_PATH, "vecnormalize.pkl")
+    stats_file_for_best_model = os.path.join(LOG_DIR, "vec_normalize_stats.pkl")
 
     final_model_file = MODEL_SAVE_PATH + ".zip"
-    stats_file_for_final_model = os.path.join(LOG_DIR, "vec_normalize_stats.pkl")
+    stats_file_for_final_model = os.path.join(MODEL_SAVE_PATH, "vec_normalize_stats.pkl")
 
-    current_model = None
-    stats_to_continue = None
+    current_model = best_model_file if os.path.exists(best_model_file) else final_model_file
+    stats_file = stats_file_for_best_model if os.path.exists(best_model_file) else stats_file_for_final_model
 
-    if os.path.exists(best_model_file) and os.path.exists(stats_file_for_best_model):
-        print(f"Found best model at {best_model_file}.")
-        current_model = best_model_file
-        stats_to_continue = stats_file_for_best_model
-    elif os.path.exists(final_model_file) and os.path.exists(stats_file_for_final_model):
-        print(f"Best model not found, trying final saved model from {final_model_file}.")
-        current_model = final_model_file
-        stats_to_continue = stats_file_for_final_model
-
-    if SHOULD_CONTINUE_TRAINING:
-        if current_model and stats_to_continue:
-            print(f"Continuing training saved model from {current_model}.")
-            continue_training_humanoid(current_model, stats_to_continue, ADDITIONAL_TRAINING_STEPS)
-            print("\nTraining complete. Run script again to watch, modify SHOULD_CONTINUE_TRAINING.")
-        else:
-            print("No existing model found to continue training. Starting a new training session.")
-            train_humanoid()
-            print("\nTraining complete. Run script again to watch, modify SHOULD_CONTINUE_TRAINING.")
-    else:
-        if os.path.exists(current_model) and os.path.exists(stats_to_continue):
-            watch_trained_humanoid(model_path=current_model, stats_path=stats_to_continue)
-        else:
-            print("No trained model found. Cancelling viewer session.")
+    if args.mode == "train":
+        train_humanoid()
+    elif args.mode == "continue":
+        continue_training_humanoid(current_model, stats_file, args.steps)
+    elif args.mode == "watch":
+        watch_trained_humanoid(current_model, stats_file)
